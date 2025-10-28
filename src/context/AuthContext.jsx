@@ -5,12 +5,38 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (token) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete api.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser && token) {
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
+  }, [token]);
 
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
-    localStorage.setItem('token', data.token);
-    // const userData = await api.get('/me');
-    setUser(userData.data);
+
+    const userData = data.data.user;
+    const userToken = data.data.token;
+
+    localStorage.setItem('token', userToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+
+    setToken(userToken);
+    setUser(userData);
+
+    api.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
   };
 
   const register = async (name, email, password, password_confirmation) => {
@@ -20,31 +46,35 @@ export const AuthProvider = ({ children }) => {
       password,
       password_confirmation,
     });
-    localStorage.setItem('token', data.token);
-    setUser(data.user);
+
+    const userData = data.data.user;
+    const userToken = data.data.token;
+
+    localStorage.setItem('token', userToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+
+    setToken(userToken);
+    setUser(userData);
+
+    api.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
   };
 
   const logout = async () => {
-    await api.post('/logout');
+    try {
+      await api.post('/logout');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setUser(null);
+    setToken(null);
+    delete api.defaults.headers.common['Authorization'];
   };
 
-  // useEffect(() => {
-  //   const checkUser = async () => {
-  //     try {
-  //       const { data } = await api.get('/me');
-  //       setUser(data);
-  //     } catch {
-  //       setUser(null);
-  //     }
-  //   };
-  //   checkUser();
-  // }, []);
-
   return (
-    <AuthContext.Provider value={{ user, login, register, logout }}>
-      {children}
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

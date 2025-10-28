@@ -19,7 +19,9 @@ export default function Login() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError('Invalid email or password. Please try again.');
+      const message =
+        err.response?.data?.message || 'Invalid email or password. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -27,17 +29,12 @@ export default function Login() {
 
   return (
     <div className="d-flex justify-content-center align-items-center vh-100">
-      <div
-        className="card shadow-sm p-4"
-        style={{ width: '400px', borderRadius: '12px' }}
-      >
+      <div className="card shadow-sm p-4" style={{ width: '400px', borderRadius: '12px' }}>
         <h4 className="text-center mb-4 text-success fw-semibold">
           Welcome Back 👋
         </h4>
 
-        {error && (
-          <div className="alert alert-danger py-2 text-center">{error}</div>
-        )}
+        {error && <div className="alert alert-danger py-2 text-center">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-3 text-start">
