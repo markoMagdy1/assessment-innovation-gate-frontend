@@ -226,7 +226,7 @@ export default function Dashboard() {
                           </button>
                         </div>
                       ) : (
-                        task.assignee_email || 'Unassigned'
+                        task.assignee.email || 'Unassigned'
                       )}
                     </td>
                     <td className="text-end">
