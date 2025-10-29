@@ -9,23 +9,24 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [filters, setFilters] = useState({ status: '', priority: '' });
+  const [reassigningId, setReassigningId] = useState(null);
+  const [reassignEmail, setReassignEmail] = useState('');
+
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-    }
+    if (!user) navigate('/login');
   }, [user, navigate]);
 
   const userId = user?.id ?? 0;
 
   const fetchTasks = useCallback(async (filters = {}) => {
     setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams(filters).toString();
       const { data } = await api.get(`/tasks?${params}`);
-      console.log(data)
       setTasks(data.data);
     } catch {
       setError('Failed to load tasks.');
@@ -42,12 +43,11 @@ export default function Dashboard() {
     setFilters({ ...filters, [e.target.name]: e.target.value });
   };
 
-  const clearFilters = () => {
-    setFilters({ status: '', priority: '' });
-  };
+  const clearFilters = () => setFilters({ status: '', priority: '' });
 
   const toggleComplete = async (id) => {
     setActionLoading(true);
+    setError('');
     try {
       await api.post(`/tasks/${id}/toggle`);
       await fetchTasks(filters);
@@ -59,9 +59,38 @@ export default function Dashboard() {
   const deleteTask = async (id) => {
     if (!window.confirm('Are you sure you want to delete this task?')) return;
     setActionLoading(true);
+    setError('');
     try {
       await api.delete(`/tasks/${id}`);
       await fetchTasks(filters);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const startReassign = (taskId, currentEmail) => {
+    setReassigningId(taskId);
+    setReassignEmail(currentEmail || '');
+  };
+
+  const cancelReassign = () => {
+    setReassigningId(null);
+    setReassignEmail('');
+  };
+
+  const handleReassign = async (taskId) => {
+    if (!reassignEmail) {
+      setError('Please enter an email for reassignment.');
+      return;
+    }
+    setActionLoading(true);
+    setError('');
+    try {
+      await api.post(`/tasks/${taskId}/reassign`, { email: reassignEmail });
+      await fetchTasks(filters);
+      cancelReassign();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reassign task.');
     } finally {
       setActionLoading(false);
     }
@@ -96,7 +125,6 @@ export default function Dashboard() {
       <div className="d-flex justify-content-between align-items-center mb-3 w-100">
         <h3 className="text-success fw-semibold">My Tasks</h3>
         <div className="d-flex align-items-center">
-          {/* Filter Controls */}
           <select
             name="status"
             className="form-select me-2"
@@ -146,23 +174,22 @@ export default function Dashboard() {
               <th>Due Date</th>
               <th>Priority</th>
               <th>Status</th>
+              <th>Assignee</th>
               <th className="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
             {tasks.length === 0 ? (
               <tr>
-                <td colSpan="5" className="text-center text-muted">
+                <td colSpan="6" className="text-center text-muted">
                   No tasks found.
                 </td>
               </tr>
             ) : (
               tasks.map((task) => {
                 const status = getStatus(task);
-                const canEdit = task.assignee_id === userId;
-                const canDelete =
-                  task.assignee_id === userId || task.creator_id === userId;
-                const canToggle = task.assignee_id === userId;
+                const isCreator = task.creator_id === userId;
+                const isAssignee = task.assignee_id === userId;
 
                 return (
                   <tr key={task.id}>
@@ -174,40 +201,83 @@ export default function Dashboard() {
                         {status}
                       </span>
                     </td>
+                    <td>
+                      {reassigningId === task.id && isCreator ? (
+                        <div className="d-flex">
+                          <input
+                            type="email"
+                            className="form-control form-control-sm me-2"
+                            placeholder="Enter assignee email"
+                            value={reassignEmail}
+                            onChange={(e) => setReassignEmail(e.target.value)}
+                          />
+                          <button
+                            className="btn btn-sm btn-success me-1"
+                            onClick={() => handleReassign(task.id)}
+                            disabled={actionLoading}
+                          >
+                            {actionLoading ? 'Reassigning...' : 'Save'}
+                          </button>
+                          <button
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={cancelReassign}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        task.assignee_email || 'Unassigned'
+                      )}
+                    </td>
                     <td className="text-end">
-                      {canToggle && (
-                        <button
-                          onClick={() => toggleComplete(task.id)}
-                          className={`btn btn-sm ${
-                            task.is_completed
-                              ? 'btn-outline-secondary'
-                              : 'btn-outline-success'
-                          } me-2`}
-                          disabled={actionLoading}
-                        >
-                          {actionLoading
-                            ? 'Please wait...'
-                            : task.is_completed
-                            ? 'Undo'
-                            : 'Complete'}
-                        </button>
+                      {/* Creator can delete/reassign */}
+                      {isCreator && (
+                        <>
+                          <button
+                            className="btn btn-sm btn-outline-primary me-2"
+                            onClick={() => startReassign(task.id, task.assignee_email)}
+                          >
+                            Reassign
+                          </button>
+                          <button
+                            onClick={() => deleteTask(task.id)}
+                            className="btn btn-sm btn-outline-danger me-2"
+                            disabled={actionLoading}
+                          >
+                            {actionLoading ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </>
                       )}
-                      {canEdit && (
-                        <Link
-                          to={`/task/${task.id}`}
-                          className="btn btn-sm btn-outline-primary me-2"
-                        >
-                          Edit
-                        </Link>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={() => deleteTask(task.id)}
-                          className="btn btn-sm btn-outline-danger"
-                          disabled={actionLoading}
-                        >
-                          {actionLoading ? 'Deleting...' : 'Delete'}
-                        </button>
+                      {/* Assignee can edit/delete/toggle */}
+                      {isAssignee && (
+                        <>
+                          <Link
+                            to={`/task/${task.id}`}
+                            className="btn btn-sm btn-outline-primary me-2"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            onClick={() => toggleComplete(task.id)}
+                            className={`btn btn-sm ${
+                              task.is_completed ? 'btn-outline-secondary' : 'btn-outline-success'
+                            } me-2`}
+                            disabled={actionLoading}
+                          >
+                            {actionLoading
+                              ? 'Please wait...'
+                              : task.is_completed
+                              ? 'Undo'
+                              : 'Complete'}
+                          </button>
+                          <button
+                            onClick={() => deleteTask(task.id)}
+                            className="btn btn-sm btn-outline-danger"
+                            disabled={actionLoading}
+                          >
+                            {actionLoading ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
