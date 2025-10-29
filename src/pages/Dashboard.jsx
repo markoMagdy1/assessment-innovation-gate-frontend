@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [filters, setFilters] = useState({ status: '', priority: '' });
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -19,10 +20,12 @@ export default function Dashboard() {
 
   const userId = user?.id ?? 0;
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (filters = {}) => {
     setLoading(true);
     try {
-      const { data } = await api.get('/tasks');
+      const params = new URLSearchParams(filters).toString();
+      const { data } = await api.get(`/tasks?${params}`);
+      console.log(data)
       setTasks(data.data);
     } catch {
       setError('Failed to load tasks.');
@@ -32,14 +35,22 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    fetchTasks(filters);
+  }, [fetchTasks, filters]);
+
+  const handleFilterChange = (e) => {
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+  };
+
+  const clearFilters = () => {
+    setFilters({ status: '', priority: '' });
+  };
 
   const toggleComplete = async (id) => {
     setActionLoading(true);
     try {
       await api.post(`/tasks/${id}/toggle`);
-      await fetchTasks();
+      await fetchTasks(filters);
     } finally {
       setActionLoading(false);
     }
@@ -50,7 +61,7 @@ export default function Dashboard() {
     setActionLoading(true);
     try {
       await api.delete(`/tasks/${id}`);
-      await fetchTasks();
+      await fetchTasks(filters);
     } finally {
       setActionLoading(false);
     }
@@ -84,12 +95,47 @@ export default function Dashboard() {
     <div className="container mt-5 w-100">
       <div className="d-flex justify-content-between align-items-center mb-3 w-100">
         <h3 className="text-success fw-semibold">My Tasks</h3>
-        <Link to="/task/new" className="btn btn-success">
-          + New Task
-        </Link>
+        <div className="d-flex align-items-center">
+          {/* Filter Controls */}
+          <select
+            name="status"
+            className="form-select me-2"
+            style={{ width: '180px' }}
+            value={filters.status}
+            onChange={handleFilterChange}
+          >
+            <option value="">All Statuses</option>
+            <option value="Done">Done</option>
+            <option value="Due Today">Due Today</option>
+            <option value="Missed/Late">Missed/Late</option>
+            <option value="Pending">Pending</option>
+          </select>
+
+          <select
+            name="priority"
+            className="form-select me-2"
+            style={{ width: '160px' }}
+            value={filters.priority}
+            onChange={handleFilterChange}
+          >
+            <option value="">All Priorities</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+
+          <button onClick={clearFilters} className="btn btn-outline-secondary me-2">
+            Reset
+          </button>
+
+          <Link to="/task/new" className="btn btn-success">
+            + New Task
+          </Link>
+        </div>
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
+
       {loading ? (
         <p className="text-center fs-5">Loading tasks...</p>
       ) : (
@@ -114,7 +160,8 @@ export default function Dashboard() {
               tasks.map((task) => {
                 const status = getStatus(task);
                 const canEdit = task.assignee_id === userId;
-                const canDelete = task.assignee_id === userId || task.creator_id === userId;
+                const canDelete =
+                  task.assignee_id === userId || task.creator_id === userId;
                 const canToggle = task.assignee_id === userId;
 
                 return (
